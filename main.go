@@ -32,9 +32,9 @@ func main() {
 	servePort := serveCmd.Int("port", 0, "Port to listen on (0 for Stdio, >0 for TCP)")
 	serveLog := serveCmd.String("logfile", "", "Path to log file")
 
-	runCmd := flag.NewFlagSet("run", flag.ExitOnError)
-	runCmd.StringVar(&configPath, "config", "devtool.yaml", "Path to configuration file")
-	runLog := runCmd.String("logfile", "", "Path to log file")
+	wizardCmd := flag.NewFlagSet("wizard", flag.ExitOnError)
+	wizardCmd.StringVar(&configPath, "config", "devtool.yaml", "Path to configuration file")
+	wizardLog := wizardCmd.String("logfile", "", "Path to log file")
 
 	testCmd := flag.NewFlagSet("test", flag.ExitOnError)
 	testAddr := testCmd.String("addr", "", "Address of running MCP server (e.g. localhost:3000)")
@@ -65,14 +65,9 @@ func main() {
 			server.ServeStdio()
 		}
 
-	case "run":
-		runCmd.Parse(os.Args[2:])
-		args := runCmd.Args()
-		if len(args) < 1 {
-			fmt.Println("Error: Tool name required")
-			os.Exit(1)
-		}
-		toolName := args[0]
+	case "wizard":
+		wizardCmd.Parse(os.Args[2:])
+		args := wizardCmd.Args()
 
 		cfg, err := config.LoadConfig(configPath)
 		if err != nil {
@@ -80,7 +75,15 @@ func main() {
 			os.Exit(1)
 		}
 
-		setupLogging(*runLog, cfg)
+		setupLogging(*wizardLog, cfg)
+
+		// If no tool specified, run wizard
+		if len(args) < 1 {
+			runWizard(cfg)
+			return
+		}
+
+		toolName := args[0]
 
 		// Find tool
 		var selectedTool *config.ToolConfig
@@ -163,10 +166,156 @@ func main() {
 	}
 }
 
+func runWizard(cfg *config.Config) {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("========================================")
+	fmt.Println("   DevTool Wizard")
+	fmt.Println("========================================")
+	fmt.Println("This wizard helps you execute tools and workflows defined in your configuration.")
+	fmt.Println("")
+
+	for {
+		fmt.Println("----------------------------------------")
+		fmt.Println("Available Actions:")
+
+		// List Tools
+		idx := 1
+		var options []interface{} // mixture of ToolConfig and WorkflowConfig
+
+		if len(cfg.Tools) > 0 {
+			fmt.Println("\nTools:")
+			for _, t := range cfg.Tools {
+				// Avoid value copy issues by appending copy or ptr
+				tCopy := t
+				fmt.Printf("  %d. %s", idx, t.Name)
+				if t.Description != "" {
+					fmt.Printf(" - %s", t.Description)
+				}
+				fmt.Println()
+				options = append(options, tCopy)
+				idx++
+			}
+		}
+
+		if len(cfg.Workflows) > 0 {
+			fmt.Println("\nWorkflows:")
+			for _, w := range cfg.Workflows {
+				wCopy := w
+				fmt.Printf("  %d. %s", idx, w.Name)
+				if w.Description != "" {
+					fmt.Printf(" - %s", w.Description)
+				}
+				fmt.Println()
+				options = append(options, wCopy)
+				idx++
+			}
+		}
+
+		fmt.Println("\nh. Help")
+		fmt.Println("q. Quit")
+		fmt.Print("\nSelect an action: ")
+
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "q" || input == "Q" {
+			fmt.Println("Goodbye!")
+			return
+		}
+
+		if input == "h" || input == "H" {
+			fmt.Println("\n--- Help ---")
+			fmt.Println("1. Enter the number corresponding to the tool or workflow you want to run.")
+			fmt.Println("2. You will be prompted to enter values for any required parameters.")
+			fmt.Println("3. The tool execution output will be displayed on the screen.")
+			fmt.Println("4. Press Enter after execution to return to this menu.")
+			fmt.Println("\nCommand Line Usage:")
+			fmt.Println("You can also run tools directly without the wizard:")
+			fmt.Println("  devtool wizard <tool_name> [param1=value1] [param2=value2]")
+			fmt.Println("------------")
+			fmt.Println("\nPress Enter to continue...")
+			reader.ReadString('\n')
+			continue
+		}
+
+		var selection int
+		_, err := fmt.Sscan(input, &selection)
+		if err != nil || selection < 1 || selection > len(options) {
+			fmt.Println("Invalid selection. Please try again.")
+			continue
+		}
+
+		selected := options[selection-1]
+		var name string
+		var params []config.Parameter
+		var isTool bool
+		var selectedTool config.ToolConfig
+		var selectedWorkflow config.WorkflowConfig
+
+		switch v := selected.(type) {
+		case config.ToolConfig:
+			name = v.Name
+			params = v.Parameters
+			isTool = true
+			selectedTool = v
+		case config.WorkflowConfig:
+			name = v.Name
+			params = v.Parameters
+			isTool = false
+			selectedWorkflow = v
+		}
+
+		fmt.Printf("\nSelected: %s\n", name)
+
+		// Collect arguments
+		args := make(map[string]interface{})
+		if len(params) > 0 {
+			fmt.Println("Please provide the following parameters:")
+			for _, p := range params {
+				fmt.Printf("  %s (%s)", p.Name, p.Description)
+				if p.Required {
+					fmt.Print("*")
+				}
+				fmt.Print(": ")
+
+				val, _ := reader.ReadString('\n')
+				val = strings.TrimSpace(val)
+
+				if val == "" && p.Required {
+					fmt.Println("Error: This parameter is required.")
+					// Simple retry mechanism could be added here, currently just fails or continues empty
+				}
+				args[p.Name] = val
+			}
+		}
+
+		fmt.Println("\nExecuting...")
+		var output string
+		if isTool {
+			output, err = tools.ExecuteTool(selectedTool, args)
+		} else {
+			output, err = tools.ExecuteWorkflow(selectedWorkflow, cfg.Tools, args)
+		}
+
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			fmt.Println("Output/Partial:", output)
+		} else {
+			fmt.Println("Success!")
+			fmt.Println("Output:")
+			fmt.Println(output)
+		}
+
+		fmt.Println("\nPress Enter to continue...")
+		reader.ReadString('\n')
+	}
+}
+
 func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  devtool serve --config <path> [--port <port>] [--logfile <path>]")
-	fmt.Println("  devtool run <tool-name> [key=value ...] --config <path> [--logfile <path>]")
+	fmt.Println("  devtool wizard [tool-name] [key=value ...] --config <path> [--logfile <path>]")
 	fmt.Println("  devtool test --addr <host:port> [--logfile <path>] [--workflow <name>]")
 }
 

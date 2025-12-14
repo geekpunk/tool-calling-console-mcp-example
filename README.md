@@ -80,16 +80,28 @@ workflows:
 
 ### CLI Mode
 
-Run a tool directly from the command line:
+DevTool provides an interactive wizard to guide you through selecting and running tools.
+
+**Interactive Wizard:**
+
+Run the tool without arguments to enter the wizard:
 
 ```bash
-./devtool run create-pipeline name="My Pipeline" repo_url="https://github.com/user/repo"
+./devtool wizard
+```
+
+**Direct Execution:**
+
+You can also run a tool or workflow directly from the command line by specifying its name:
+
+```bash
+./devtool wizard create-pipeline name="My Pipeline" repo_url="https://github.com/user/repo"
 ```
 
 You can also run workflows just like tools:
 
 ```bash
-./devtool run deploy-pipeline repo="https://github.com/user/repo"
+./devtool wizard deploy-pipeline repo="https://github.com/user/repo"
 ```
 
 ### MCP Server Mode
@@ -110,7 +122,16 @@ MCP Server started. Status: Running. Mode: TCP. IP: 192.168.1.10 Port: 3456
 
 The server watches the configuration file for changes and automatically reloads it.
 
-### Test Mode
+### Testing
+
+**Unit Tests**:
+
+Run the standard Go tests:
+```bash
+go test -v ./...
+```
+
+**Integration Test Mode**:
 
 Run a built-in integration test. It will connect to the local server defined in `devtool.yaml` (or via `--addr`):
 
@@ -123,6 +144,8 @@ This is useful for verifying your configuration and tool definitions without an 
 
 ```text
 .
+├── .github
+│   └── workflows       # GitHub Actions CI
 ├── config
 │   └── config.go       # Configuration loading logic
 ├── logger
