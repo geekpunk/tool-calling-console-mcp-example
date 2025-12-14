@@ -104,7 +104,20 @@ This is useful for verifying your configuration and tool definitions without an 
 
 ## Project Structure
 
--   `main.go`: Entry point.
--   `config/`: Configuration loading logic.
--   `tools/`: Tool execution logic (HTTP client).
--   `mcp/`: MCP server implementation.
+```text
+.
+├── config
+│   └── config.go       # Configuration loading logic
+├── logger
+│   └── logger.go       # Logger implementation
+├── mcp
+│   └── server.go       # MCP server implementation
+├── tools
+│   ├── executor.go     # Tool execution logic
+│   └── workflow.go     # Workflow execution logic
+├── devtool.yaml        # Configuration file
+├── go.mod
+├── go.sum
+├── main.go             # Entry point
+└── README.md
+```
