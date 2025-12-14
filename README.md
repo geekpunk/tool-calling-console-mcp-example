@@ -63,6 +63,17 @@ tools:
         description: Database name
         required: true
 
+workflows:
+  - name: deploy-pipeline
+    description: Check status and deploy pipeline
+    steps:
+      - name: status
+        tool: get-status
+      - name: deploy
+        tool: create-pipeline
+        args:
+          name: "Deploy {{status}}" # Use output from previous step
+          repo_url: "{{input.repo}}" # Use global input argument
 ```
 
 ## Usage
@@ -73,6 +84,12 @@ Run a tool directly from the command line:
 
 ```bash
 ./devtool run create-pipeline name="My Pipeline" repo_url="https://github.com/user/repo"
+```
+
+You can also run workflows just like tools:
+
+```bash
+./devtool run deploy-pipeline repo="https://github.com/user/repo"
 ```
 
 ### MCP Server Mode

@@ -49,11 +49,11 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		setupLogging(*serveLog, cfg)
 
 		server := mcp.NewServer(cfg, configPath)
-		
+
 		port := *servePort
 		if port == 0 && cfg.Server.Port > 0 {
 			port = cfg.Server.Port
@@ -79,11 +79,13 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		setupLogging(*runLog, cfg)
 
 		// Find tool
 		var selectedTool *config.ToolConfig
+		var selectedWorkflow *config.WorkflowConfig
+
 		for _, t := range cfg.Tools {
 			if t.Name == toolName {
 				selectedTool = &t
@@ -92,7 +94,17 @@ func main() {
 		}
 
 		if selectedTool == nil {
-			logger.Error("Tool '%s' not found in config", toolName)
+			// Check workflows
+			for _, w := range cfg.Workflows {
+				if w.Name == toolName {
+					selectedWorkflow = &w
+					break
+				}
+			}
+		}
+
+		if selectedTool == nil && selectedWorkflow == nil {
+			logger.Error("Tool or Workflow '%s' not found in config", toolName)
 			os.Exit(1)
 		}
 
@@ -105,25 +117,32 @@ func main() {
 			}
 		}
 
-		output, err := tools.ExecuteTool(*selectedTool, toolArgs)
+		var output string
+
+		if selectedTool != nil {
+			output, err = tools.ExecuteTool(*selectedTool, toolArgs)
+		} else {
+			output, err = tools.ExecuteWorkflow(*selectedWorkflow, cfg.Tools, toolArgs)
+		}
+
 		if err != nil {
-			logger.Error("Error executing tool: %v\nOutput: %v", err, output)
+			logger.Error("Error executing %s: %v\nOutput: %v", toolName, err, output)
 			os.Exit(1)
 		}
 		fmt.Println(output)
 
 	case "test":
 		testCmd.Parse(os.Args[2:])
-		
+
 		// Load config just for defaults (logfile, port)
 		cfg, err := config.LoadConfig(configPath)
 		var cfgPtr *config.Config
 		if err == nil {
 			cfgPtr = cfg
 		}
-		
+
 		setupLogging(*testLog, cfgPtr)
-		
+
 		addr := *testAddr
 		if addr == "" {
 			// Try to load config to get default port
@@ -241,14 +260,14 @@ func runTest(addr string, workflowFilter string) {
 		}
 
 		fmt.Printf("\n--- Testing tool: %s ---\n", tool.Name)
-		
+
 		args := make(map[string]interface{})
 		// Provide dummy args for required params
 		if tool.InputSchema.Required != nil {
 			for _, req := range tool.InputSchema.Required {
 				prop := tool.InputSchema.Properties[req].(map[string]interface{})
 				pType := prop["type"].(string)
-				
+
 				if pType == "string" {
 					args[req] = "test-value"
 				} else {
@@ -261,7 +280,7 @@ func runTest(addr string, workflowFilter string) {
 			Name:      tool.Name,
 			Arguments: args,
 		}
-		
+
 		callResp := send("tools/call", callParams)
 		if callResp.Error != nil {
 			fmt.Printf("Tool call failed: %v\n", callResp.Error)
@@ -269,6 +288,6 @@ func runTest(addr string, workflowFilter string) {
 			fmt.Printf("Tool call success. Result: %v\n", callResp.Result)
 		}
 	}
-	
+
 	fmt.Println("\nTest run completed.")
 }
