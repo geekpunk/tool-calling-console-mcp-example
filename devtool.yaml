@@ -1,0 +1,60 @@
+logfile: devtool.log
+
+server:
+  port: 3456
+
+tools:
+  - name: echo
+    description: Echoes back the input arguments
+    url: https://httpbin.org/post
+    method: POST
+    parameters:
+      - name: message
+        type: string
+        description: The message to echo
+        required: true
+
+  - name: get-ip
+    description: Returns the origin IP
+    url: https://httpbin.org/ip
+    method: GET
+    parameters: []
+
+  - name: list-files
+    type: shell
+    description: Lists files in the current directory
+    command: ls -la
+    parameters: []
+
+  - name: greet
+    type: shell
+    description: Greets a user
+    command: echo "Hello, $NAME!"
+    parameters:
+      - name: name
+        type: string
+        description: Name to greet
+        required: true
+
+workflows:
+  - name: greet-with-ip
+    description: Gets IP and greets it
+    steps:
+      - name: fetch-ip
+        tool: get-ip
+      - name: say-hello
+        tool: greet
+        args:
+          name: "{{fetch-ip}}"
+    output: "Start IP check... Found: {{fetch-ip}}. Result: {{say-hello}}"
+
+  - name: greet-with-ls
+    description: Gets IP and greets it
+    steps:
+      - name: ls
+        tool: list-files
+      - name: say-hello
+        tool: greet
+        args:
+          name: "hey there files: {{ls}}"
+    output: "Found some files: {{ls}}. Result: {{say-hello}}"
